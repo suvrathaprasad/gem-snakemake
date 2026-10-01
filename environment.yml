@@ -1,0 +1,13 @@
+name: gem-core
+channels:
+  - conda-forge
+  - bioconda
+channel_priority: strict
+
+dependencies:
+  - python=3.10
+
+# Orchestration
+   - snakemake-minimal
+   - snakemake-executor-plugin-cluster-generic
+   - mamba              # needed on PATH for conda-frontend: mamba below

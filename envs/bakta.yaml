@@ -1,0 +1,9 @@
+name: bakta
+channels:
+  - conda-forge
+  - bioconda
+channel_priority: strict
+
+dependencies:
+  - python>=3.9
+  - bakta=1.12.1

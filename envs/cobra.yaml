@@ -1,0 +1,10 @@
+name: cobra
+channels:
+  - conda-forge
+  - bioconda
+channel_priority: strict
+
+dependencies:
+  - cobra
+  - glpk
+  - swiglpk

@@ -1,0 +1,11 @@
+name: sra_tools
+channels:
+  - conda-forge
+  - bioconda
+channel_priority: strict
+
+dependencies:
+  # If you hit the earlier GLIBC_2.27 mismatch again, pin the version here,
+  # e.g. sra-tools=2.11.0 — match it to `ldd --version` on the compute nodes.
+  - sra-tools=2.11.0
+  - pigz

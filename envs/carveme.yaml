@@ -1,0 +1,11 @@
+name: carveme
+channels: 
+  - conda-forge
+  - bioconda
+channel_priority: strict
+
+dependencies:
+  - carveme
+  - diamond
+  - scip
+  - pyscipopt

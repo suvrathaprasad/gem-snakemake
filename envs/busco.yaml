@@ -1,0 +1,8 @@
+name: busco
+channels:
+  - conda-forge
+  - bioconda
+channel_priority: strict
+
+dependencies:
+  - busco>=5
