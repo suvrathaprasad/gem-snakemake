@@ -353,7 +353,7 @@ rule operon_gene_check:
 
 # Add glyoxylate transport + exchange to the gap-filled model. CarveMe's
 # universe has no EX_glx_e at all (confirmed from the universe build
-# log, not gene-driven — see build plan). Uses model.metabolites'
+# log, not gene-driven). Uses model.metabolites'
 # real BiGG IDs (glx_c, h_e, h_c) directly, unlike an earlier
 # standalone attempt at this that guessed wrong/differently-spelled
 # IDs (glyox[c] vs the real glx_c) and ended up building an entire
