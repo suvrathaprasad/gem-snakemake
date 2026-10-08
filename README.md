@@ -173,8 +173,6 @@ A Biolog result counts as positive when AUC minus the negative-control AUC is at
   representation of gene regulation, so it cannot see this. Barth et al. independently
   report the same *rhaS* frameshift in O26 persistent strains.
 
-See `gem_build_plan.md` for the full log, including corrections made along the way.
-
 ## Caveats
 
 - Pilot scope: three strains and two substrates; the Biolog table covers 28 strains and
