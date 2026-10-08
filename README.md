@@ -53,8 +53,6 @@ environment-core.yml       driver environment (Snakemake + Slurm executor plugin
 envs/                      one small conda env per tool, built by Snakemake on demand
 scripts/                   Python scripts called by the rules
 workflow/profiles/slurm/   Snakemake profile (cluster-generic sbatch template)
-bash_scripts/              original manual SRA download script (superseded)
-other_environments/        early standalone conda envs (superseded by envs/)
 ```
 
 Data and databases (`PRJNA559322/`, `reference/`, BUSCO and Bakta downloads, the Biolog
