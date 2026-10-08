@@ -203,4 +203,4 @@ A Biolog result counts as positive when AUC minus the negative-control AUC is at
 
 ## Author and license
 
-Suvratha Jayaprasad . suvratha.jayaprasad@fli.de
+Developed by Suvratha Jayaprasad, Postdoc at Friedrich-Loeffler-Institut (FLI) Jena.
