@@ -1,0 +1,35 @@
+# --- Project GEM: data and databases (created locally, not tracked) ---
+# Ignore everything in the data folder except the accession lists
+PRJNA559322/*
+!PRJNA559322/*_SRR.txt
+!PRJNA559322/srrs.txt
+
+# files/ is deliberately NOT ignored; it holds tracked inputs
+reference/
+bakta_downloads/
+busco_downloads/
+
+# Old root-level logs
+logs/
+
+# --- Snakemake ---
+.snakemake/
+
+# --- Large / generated files ---
+*.sra
+*.fastq
+*.fastq.gz
+*.tar.xz
+*.tar.gz
+*.dmnd
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+
+# --- Editors / OS ---
+.DS_Store
+.vscode/
+.idea/
+*.swp
