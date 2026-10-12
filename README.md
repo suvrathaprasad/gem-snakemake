@@ -56,8 +56,6 @@ scripts/                   Python scripts called by the rules
 files/                     tracked inputs: Biolog table, reference genes, strain maps
 workflow/profiles/slurm/   Snakemake profile (cluster-generic sbatch template)
 PRJNA559322/               only the SRR accession lists are tracked
-gem_build_plan.md          running project log: decisions, findings, open questions
-                           (kept in the project docs, not committed to the repo)
 ```
 
 Large data and databases (assemblies, BUSCO and Bakta downloads, models, logs) are
@@ -183,8 +181,6 @@ A Biolog result counts as positive when AUC minus the negative-control AUC is at
   (100% identity, 53% coverage), with all structural genes intact. FBA has no
   representation of gene regulation, so it cannot see this. Barth et al. independently
   report the same *rhaS* frameshift in O26 persistent strains.
-
-See `gem_build_plan.md` for the full log, including corrections made along the way.
 
 ## Caveats
 
