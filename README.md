@@ -49,7 +49,7 @@ annotation tool used.
 
 ```
 Snakefile                  workflow definition
-config.yaml                pipeline paths and database locations (not committed to the repo)
+config.yaml                pipeline paths and database locations 
 environment-core.yml       driver environment (Snakemake + Slurm executor plugin)
 envs/                      one small conda env per tool, built by Snakemake on demand
 scripts/                   Python scripts called by the rules
