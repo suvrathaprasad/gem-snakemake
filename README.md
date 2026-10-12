@@ -30,7 +30,7 @@ SRA reads -> fastp trim -> SPAdes assembly -> BUSCO (QC) -> Bakta annotation
 | Trimming | `fastp_trim` | fastp | `trimmed/{sample}_{1,2}.trim.fastq.gz` |
 | Assembly | `spades_assembly` | SPAdes (`--isolate`) | `assembly/{sample}/contigs.fasta` |
 | Assembly QC | `busco_qc` | BUSCO (`enterobacterales_odb10`) | `assembly/{sample}/busco/` |
-| Annotation | `bakta_annotate` (or `prokka_annotate`) | Bakta | `annotation/{sample}/bakta/{sample}.faa` |
+| Annotation | `bakta_annotate` | Bakta | `annotation/{sample}/bakta/{sample}.faa` |
 | Draft model | `carveme_draft` | CarveMe (`-u gramneg`, SCIP) | `models/{sample}/{sample}.draft.xml` |
 | Gap-fill | `carveme_gapfill` | CarveMe `gapfill` (M9, LB) | `models/{sample}/{sample}.gapfilled.xml` |
 | FBA test | `fba_media_test` | COBRApy (`scripts/fba_media_test.py`) | `{sample}.fba_media_test.tsv` |
@@ -40,23 +40,28 @@ SRA reads -> fastp trim -> SPAdes assembly -> BUSCO (QC) -> Bakta annotation
 | Curated FBA | `fba_media_test_curated`, `fba_biolog_compare_curated` | as above | `*_curated.tsv` |
 | Report | `summary_report` | matplotlib, reportlab | `models/{sample}/{sample}.summary_report.pdf` |
 
-`spades_assembly` and the read-processing rules were superseded in this work by publicly
-available assemblies (see "Input data" below), but are kept in the Snakefile.
+`sra_to_fastq`, `fastp_trim` and `spades_assembly` were superseded in this work by
+publicly available assemblies (see "Input data" below). They are kept in the Snakefile,
+commented out. A Prokka environment (`envs/prokka.yaml`) is also kept, but Bakta is the
+annotation tool used.
 
 ## Repository layout
 
 ```
 Snakefile                  workflow definition
-config.yaml                pipeline paths and database locations
-strain_id_map.tsv          SRR accession -> strain name (as used in the Biolog table)
+config.yaml                pipeline paths and database locations (not committed to the repo)
 environment-core.yml       driver environment (Snakemake + Slurm executor plugin)
 envs/                      one small conda env per tool, built by Snakemake on demand
 scripts/                   Python scripts called by the rules
+files/                     tracked inputs: Biolog table, reference genes, strain maps
 workflow/profiles/slurm/   Snakemake profile (cluster-generic sbatch template)
+PRJNA559322/               only the SRR accession lists are tracked
+gem_build_plan.md          running project log: decisions, findings, open questions
+                           (kept in the project docs, not committed to the repo)
 ```
 
-Data and databases (`PRJNA559322/`, `reference/`, BUSCO and Bakta downloads, the Biolog
-table) are created locally and are not part of the repository.
+Large data and databases (assemblies, BUSCO and Bakta downloads, models, logs) are
+created locally and are not part of the repository.
 
 ## Requirements
 
@@ -77,12 +82,12 @@ All other tools are installed automatically by Snakemake into per-rule environme
 Do these on the login node.
 
 1. **Biolog phenotype table.** Table S1 from the supplementary material of
-   Barth et al. 2020 (`Supplement_TableS1_Biolog_AUC.xlsx`). Set `biolog_data` in
-   `config.yaml`.
+   Barth et al. 2020 (`Supplement_TableS1_Biolog_AUC.xlsx`, tracked in `files/`).
+   Set `biolog_data` in `config.yaml`.
 2. **Assemblies.** Place one assembly per sample at
    `PRJNA559322/assembly/{SRR}/contigs.fasta`. Either use public assemblies for the
    BioProject, or run the read-based rules (`sra_to_fastq`, `fastp_trim`,
-   `spades_assembly`) to build them.
+   `spades_assembly`, after uncommenting them) to build them.
 3. **BUSCO lineage.** Pre-fetch so that compute nodes do not need internet:
    ```bash
    mamba env create -f envs/busco.yaml && mamba activate busco
@@ -96,16 +101,21 @@ Do these on the login node.
    tar -xJf db-light.tar.xz
    ```
    Set `baktadb` in `config.yaml` to the extracted folder.
-5. **Reference genes for the operon check** (*E. coli* K-12 MG1655, RefSeq GCF_000005845.2):
+5. **Reference genes for the operon check** (*E. coli* K-12 MG1655, RefSeq GCF_000005845.2).
+   The RefSeq protein FASTA and feature table are tracked in `files/`; to fetch them
+   again:
    ```bash
    B=https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2
    wget $B/GCF_000005845.2_ASM584v2_protein.faa.gz $B/GCF_000005845.2_ASM584v2_feature_table.txt.gz
    gunzip GCF_000005845.2_ASM584v2_*.gz
-   mkdir -p reference
+   ```
+   Then extract the operon genes (the `operon_gene_check` rule reads
+   `files/rha_glc_genes.faa`):
+   ```bash
    python scripts/extract_reference_genes.py \
-       --feature-table GCF_000005845.2_ASM584v2_feature_table.txt \
-       --protein-faa   GCF_000005845.2_ASM584v2_protein.faa \
-       -o reference/rha_glc_genes.faa
+       --feature-table files/GCF_000005845.2_ASM584v2_feature_table.txt \
+       --protein-faa   files/GCF_000005845.2_ASM584v2_protein.faa \
+       -o files/rha_glc_genes.faa
    ```
    This extracts 14 genes: *glcA-G* and *rhaA, B, D, M, R, S, T*. Check the output for
    `[warn]` lines.
@@ -114,8 +124,11 @@ Do these on the login node.
 
 - `config.yaml`: paths for each stage, `accessions_file` (one SRR per line),
   `baktadb`, `biolog_data`.
-- `strain_id_map.tsv`: tab-separated `SRR` and `LaborID` (the strain name used in the
-  Biolog table). Add a row for every strain you run.
+- Strain maps: one tab-separated file per colonization type, `files/strain_id_map_per.tsv`
+  (persistent), `files/strain_id_map_spo.tsv` (sporadic) and `files/strain_id_map_unk.tsv`
+  (unknown), each with a header line and then `SRR` and `LaborID` (the strain name used
+  in the Biolog table). Add a row for every strain you run, to the map for its
+  colonization type.
 - Slurm: set `partition=` in each rule's `resources:` block in the `Snakefile`, and the
   defaults in `workflow/profiles/slurm/config.yaml`. Add `--account=...` to the
   `sbatch` template there if your cluster needs one.
@@ -130,11 +143,12 @@ snakemake --profile workflow/profiles/slurm
 
 Snakemake runs on the login node as a light driver and submits each job to Slurm.
 
-**Note on the Snakefile state.** Stages that were already confirmed working are
-commented out (rules and their `rule all` targets), so the active part currently covers
-only the later stages. To run everything from scratch, uncomment the rules you need and
-the matching targets in `rule all`. Any script a rule calls is declared as an `input:`,
-so editing a script triggers a rerun automatically.
+**Note on the Snakefile state.** Only the read-processing rules (`sra_to_fastq`,
+`fastp_trim`, `spades_assembly`) and their `rule all` targets are commented out. Every
+rule from `busco_qc` through `summary_report` is active, and `rule all` targets
+everything up to the per-strain PDF. To start from reads, uncomment those three rules
+and the matching targets in `rule all`. Any script a rule calls is declared as an
+`input:`, so editing a script triggers a rerun automatically.
 
 Logs are written to `PRJNA559322/logs/` (per-rule logs under `{sample}/`, Slurm
 stdout/stderr under `{rule}/`).
@@ -169,6 +183,8 @@ A Biolog result counts as positive when AUC minus the negative-control AUC is at
   (100% identity, 53% coverage), with all structural genes intact. FBA has no
   representation of gene regulation, so it cannot see this. Barth et al. independently
   report the same *rhaS* frameshift in O26 persistent strains.
+
+See `gem_build_plan.md` for the full log, including corrections made along the way.
 
 ## Caveats
 
