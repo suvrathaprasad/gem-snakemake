@@ -19,6 +19,20 @@ LOGS_DIR =       config["logs_dir"]
 TMP_DIR =        config["tmp_dir"]
 BIOLOG_DATA =    config["biolog_data"]
 
+ALL_SAMPLES = list(SAMPLES)
+
+def _pick(key):
+	chosen = config.get(key)
+	if chosen is None:
+		return list(ALL_SAMPLES)
+	unknown = [s for s in chosen if s not in ALL_SAMPLES]
+	if unknown:
+		raise ValueError(f"{key}: not in accessions_file: {unknown}")
+	return list(chosen)
+
+MODEL_SAMPLES = _pick("model_samples") 
+SCAN_SAMPLES  = _pick("scan_samples")
+BOTH_SAMPLES  = [s for s in MODEL_SAMPLES if s in SCAN_SAMPLES]
 
 rule all:
     input:
@@ -28,15 +42,21 @@ rule all:
 #        expand(f"{TRIMMED_DIR}/{{sample}}_1.trim.fastq.gz", sample=SAMPLES),
 #        expand(f"{TRIMMED_DIR}/{{sample}}_2.trim.fastq.gz", sample=SAMPLES),
 #
-        expand(f"{ASSEMBLY_DIR}/{{sample}}/contigs.fasta", sample=SAMPLES),
-        expand(f"{ASSEMBLY_DIR}/{{sample}}/busco", sample=SAMPLES),
-        expand(f"{ANNOTATION_DIR}/{{sample}}/bakta/{{sample}}.faa", sample=SAMPLES),
-        expand(f"{MODEL_DIR}/{{sample}}/{{sample}}.draft.xml", sample=SAMPLES),
-        expand(f"{MODEL_DIR}/{{sample}}/{{sample}}.gapfilled.xml", sample=SAMPLES),
-        expand(f"{MODEL_DIR}/{{sample}}/{{sample}}.fba_media_test.tsv", sample=SAMPLES),
-        expand(f"{MODEL_DIR}/{{sample}}/{{sample}}.fba_biolog_compare.tsv", sample=SAMPLES),
-        expand(f"{ANNOTATION_DIR}/{{sample}}/{{sample}}.operon_gene_check.tsv", sample=SAMPLES),
-        expand(f"{MODEL_DIR}/{{sample}}/{{sample}}.summary_report.pdf", sample=SAMPLES),
+        expand(f"{ASSEMBLY_DIR}/{{sample}}/contigs.fasta", sample=ALL_SAMPLES),
+        expand(f"{ASSEMBLY_DIR}/{{sample}}/busco", sample=ALL_SAMPLES),
+        expand(f"{ANNOTATION_DIR}/{{sample}}/bakta/{{sample}}.faa", sample=ALL_SAMPLES),
+        expand(f"{MODEL_DIR}/{{sample}}/{{sample}}.draft.xml", sample=MODEL_SAMPLES),
+        expand(f"{MODEL_DIR}/{{sample}}/{{sample}}.gapfilled.xml", sample=MODEL_SAMPLES),
+        expand(f"{MODEL_DIR}/{{sample}}/{{sample}}.fba_media_test.tsv", sample=MODEL_SAMPLES),
+        expand(f"{MODEL_DIR}/{{sample}}/{{sample}}.fba_biolog_compare.tsv", sample=MODEL_SAMPLES),
+        expand(f"{ANNOTATION_DIR}/{{sample}}/{{sample}}.operon_gene_check.tsv", sample=MODEL_SAMPLES),
+        expand(f"{MODEL_DIR}/{{sample}}/{{sample}}.summary_report.pdf", sample=MODEL_SAMPLES),
+        expand(f"{ANNOTATION_DIR}/{{sample}}/{{sample}}.metabolic_gene_scan.tsv", sample=SCAN_SAMPLES),
+        expand(f"{MODEL_DIR}/{{sample}}/{{sample}}.knockout_single.tsv", sample=BOTH_SAMPLES),
+        expand(f"{MODEL_DIR}/{{sample}}/{{sample}}.knockout_combined.tsv", sample=BOTH_SAMPLES),
+        expand(f"{MODEL_DIR}/{{sample}}/{{sample}}.knockout_crosscheck.tsv", sample=BOTH_SAMPLES),
+        expand(f"{ANNOTATION_DIR}/{{sample}}/{{sample}}.glc_locus_check.tsv", sample=SCAN_SAMPLES),
+        [f"{MODEL_DIR}/cross_strain/candidate_table.tsv"] if BOTH_SAMPLES else []
 
 
 # convert sra to fastq
@@ -177,6 +197,7 @@ rule bakta_annotate:
     output:
         faa=f"{ANNOTATION_DIR}/{{sample}}/bakta/{{sample}}.faa",
         txt=f"{ANNOTATION_DIR}/{{sample}}/bakta/{{sample}}.txt",
+        gff3=f"{ANNOTATION_DIR}/{{sample}}/bakta/{{sample}}.gff3",
     conda:
         "envs/bakta.yaml"
     threads: 8
@@ -312,6 +333,7 @@ rule fba_biolog_compare:
 
 # which E. coli K-12 MG165 rha/glc operon genes does this
 # strain's annotated protein have a good hit for?
+# !!! Run extract_reference_genes.py BEFORE running this step !!!
 rule operon_gene_check:
     input:
         query="files/rha_glc_genes.faa",
@@ -349,6 +371,117 @@ rule operon_gene_check:
             --raw-hits {params.raw_hits} \
             -o {output.results} \
             >> {log} 2>&1
+        """
+
+# !!! Run build_iml1515_reference.py BEFORE starting this step !!!
+# Reciprocal-best-hit map: each iML1515 reference protein -> its best hit in the
+# strain's Bakta proteins, and whether that hit is reciprocal (reverse search
+# against the whole K-12 proteome). Adapted from get_rbh.py.
+rule ortholog_map:
+    input:
+        query="files/iML1515_metabolic_genes.faa",
+        k12_proteome="files/GCF_000005845.2_ASM584v2_protein.faa",
+        feature_table="files/GCF_000005845.2_ASM584v2_feature_table.txt",
+        target_faa=f"{ANNOTATION_DIR}/{{sample}}/bakta/{{sample}}.faa",
+        script="scripts/ortholog_map.py",
+    output:
+        results=f"{ANNOTATION_DIR}/{{sample}}/{{sample}}.ortholog_map.tsv",
+    conda:
+        "envs/diamond.yaml"
+    threads: 4
+    resources:
+        mem_mb=4000,
+        runtime="15m",
+        partition="medium",
+    params:
+        db_dir=f"{ANNOTATION_DIR}/{{sample}}/ortholog_map_dbs",
+        fwd=f"{ANNOTATION_DIR}/{{sample}}/{{sample}}.ortholog_map.fwd.raw.tsv",
+        rev=f"{ANNOTATION_DIR}/{{sample}}/{{sample}}.ortholog_map.rev.raw.tsv",
+    log:
+        f"{LOGS_DIR}/{{sample}}/{{sample}}.ortholog_map.log",
+    shell:
+        """
+        python {input.script} \
+            --query {input.query} \
+            --reference-proteome {input.k12_proteome} \
+            --target {input.target_faa} \
+            --feature-table {input.feature_table} \
+            --out {output.results} \
+            --db_dir {params.db_dir} \
+            --fwd_hits {params.fwd} \
+            --rev_hits {params.rev} \
+            --threads {threads} \
+            > {log} 2>&1
+        """
+# !!! fix_ref_isoforms.py was run after this step for the fix and this step
+#     was re-run again. !!!
+# retired script. patch implemented in build_iml1515_reference.py
+
+# Genome-wide scan: intact / disrupted / absent per iML1515 metabolic gene,
+# from the ortholog map (no DIAMOND call here any more).
+rule metabolic_gene_scan:
+    input:
+        query="files/iML1515_metabolic_genes.faa",
+        gene_table="files/iML1515_gene_table.tsv",
+        ortholog_map=f"{ANNOTATION_DIR}/{{sample}}/{{sample}}.ortholog_map.tsv",
+        script="scripts/scan_metabolic_genes.py",
+    output:
+        results=f"{ANNOTATION_DIR}/{{sample}}/{{sample}}.metabolic_gene_scan.tsv",
+    conda:
+        "envs/diamond.yaml"
+    threads: 1
+    resources:
+        mem_mb=2000,
+        runtime="10m",
+        partition="medium",
+    log:
+        f"{LOGS_DIR}/{{sample}}/{{sample}}.metabolic_gene_scan.log",
+    shell:
+        """
+        python {input.script} \
+            --query-fasta {input.query} \
+            --gene-table {input.gene_table} \
+            --ortholog-map {input.ortholog_map} \
+            -o {output.results} \
+            > {log} 2>&1
+        """
+
+# Direct search of the reference operon proteins against the assembly (a tblastn
+# equivalent), to tell a gene the annotation missed, a frameshifted pseudogene and
+# a true absence apart. Place after operon_gene_check. Uses the existing diamond
+# env.
+rule glc_locus_check:
+    input:
+        query="files/rha_glc_genes.faa",
+        assembly=f"{ASSEMBLY_DIR}/{{sample}}/contigs.fasta",
+        gff3=f"{ANNOTATION_DIR}/{{sample}}/bakta/{{sample}}.gff3",
+        script="scripts/locus_check.py",
+    output:
+        loci=f"{ANNOTATION_DIR}/{{sample}}/{{sample}}.glc_locus_check.tsv",
+        neighbourhood=f"{ANNOTATION_DIR}/{{sample}}/{{sample}}.glc_neighbourhood.tsv",
+    conda:
+        "envs/diamond.yaml"
+    threads: 4
+    resources:
+        mem_mb=4000,
+        runtime="15m",
+        partition="medium",
+    params:
+        db_dir=f"{ANNOTATION_DIR}/{{sample}}/locus_check",
+    log:
+        f"{LOGS_DIR}/{{sample}}/{{sample}}.glc_locus_check.log",
+    shell:
+        """
+        python {input.script} \
+            --query {input.query} \
+            --assembly {input.assembly} \
+            --gff3 {input.gff3} \
+            --out-loci {output.loci} \
+            --out-neighbourhood {output.neighbourhood} \
+            --window-genes glcA,glcB,glcC,glcD,glcE,glcF,glcG \
+            --db_dir {params.db_dir} \
+            --threads {threads} \
+            > {log} 2>&1
         """
 
 # Add glyoxylate transport + exchange to the gap-filled model. CarveMe's
@@ -406,7 +539,6 @@ rule fba_media_test_curated:
         python {input.script} {input.model} -o {output.results} > {log} 2>&1
         """
 
-
 rule fba_biolog_compare_curated:
     input:
         fba_results=f"{MODEL_DIR}/{{sample}}/{{sample}}.fba_media_test_curated.tsv",
@@ -435,6 +567,114 @@ rule fba_biolog_compare_curated:
             > {log} 2>&1
         """
 
+# Knock out the metabolic genes the genome scan called disrupted or absent,
+# via the iML1515 GPR rules (reaction-level), in the curated model, and
+# rerun FBA on M9 + glucose / glyoxylate / rhamnose. One row per flagged
+# gene on its own, plus one combined all-flagged knockout (table + model).
+rule knockout_flagged_genes:
+    input:
+        model=f"{MODEL_DIR}/{{sample}}/{{sample}}.curated.xml",
+        scan=f"{ANNOTATION_DIR}/{{sample}}/{{sample}}.metabolic_gene_scan.tsv",
+        iml1515="files/iML1515.json.gz",
+        script="scripts/knockout_flagged_genes.py",
+        media_script="scripts/fba_media_test.py",  # imported by the knockout script
+    output:
+        single=f"{MODEL_DIR}/{{sample}}/{{sample}}.knockout_single.tsv",
+        combined=f"{MODEL_DIR}/{{sample}}/{{sample}}.knockout_combined.tsv",
+        model=f"{MODEL_DIR}/{{sample}}/{{sample}}.knockout_combined.xml",
+    conda:
+        "envs/cobra.yaml"
+    threads: 1
+    resources:
+        mem_mb=4000,
+        runtime="30m",
+        partition="medium",
+    log:
+        f"{LOGS_DIR}/{{sample}}/{{sample}}.knockout_flagged_genes.log",
+    shell:
+        """
+        python {input.script} \
+            --iml1515-json {input.iml1515} \
+            --scan {input.scan} \
+            --model {input.model} \
+            --out-single {output.single} \
+            --out-combined {output.combined} \
+            --out-model {output.model} \
+            > {log} 2>&1
+        """
+
+# Cross-check of knockout_flagged_genes: knocks out the strain's own locus
+# tags with COBRApy (flagged genes whose best hit is a clean, unshared gene
+# in the strain model) and compares the reactions removed with the
+# iML1515-GPR knockout_single table. Genes that cannot be checked this way
+# stay in the table with the reason.
+rule knockout_crosscheck:
+    input:
+        model=f"{MODEL_DIR}/{{sample}}/{{sample}}.curated.xml",
+        scan=f"{ANNOTATION_DIR}/{{sample}}/{{sample}}.metabolic_gene_scan.tsv",
+        single=f"{MODEL_DIR}/{{sample}}/{{sample}}.knockout_single.tsv",
+        script="scripts/knockout_crosscheck.py",
+        media_script="scripts/fba_media_test.py",              # imported
+        knockout_script="scripts/knockout_flagged_genes.py",   # imported
+    output:
+        results=f"{MODEL_DIR}/{{sample}}/{{sample}}.knockout_crosscheck.tsv",
+    conda:
+        "envs/cobra.yaml"
+    threads: 1
+    resources:
+        mem_mb=4000,
+        runtime="30m",
+        partition="medium",
+    log:
+        f"{LOGS_DIR}/{{sample}}/{{sample}}.knockout_crosscheck.log",
+    shell:
+        """
+        python {input.script} \
+            --scan {input.scan} \
+            --model {input.model} \
+            --knockout-single {input.single} \
+            -o {output.results} \
+            > {log} 2>&1
+        """
+
+# It runs once for all strains in BOTH_SAMPLES (the accession file), so with
+# pruns_SRR.txt it merges all three strains into one table. Column headers use
+# the LaborIDs from the strain map (13E0634_call, ...).
+rule candidate_table:
+    input:
+        scan=expand(f"{ANNOTATION_DIR}/{{sample}}/{{sample}}.metabolic_gene_scan.tsv", sample=BOTH_SAMPLES),
+        single=expand(f"{MODEL_DIR}/{{sample}}/{{sample}}.knockout_single.tsv", sample=BOTH_SAMPLES),
+        cross=expand(f"{MODEL_DIR}/{{sample}}/{{sample}}.knockout_crosscheck.tsv", sample=BOTH_SAMPLES),
+        locus=expand(f"{ANNOTATION_DIR}/{{sample}}/{{sample}}.glc_locus_check.tsv", sample=BOTH_SAMPLES),
+        script="scripts/candidate_table.py",
+    output:
+        table=f"{MODEL_DIR}/cross_strain/candidate_table.tsv",
+    params:
+        strains=lambda wc, input: " ".join(
+            f"--strain {STRAIN_ID[s]} {sc} {sg} {cr}"
+            for s, sc, sg, cr in zip(BOTH_SAMPLES, input.scan, input.single, input.cross)
+        ),
+        locus=lambda wc, input: " ".join(
+            f"--locus-check {STRAIN_ID[s]} {l}" for s, l in zip(BOTH_SAMPLES, input.locus)
+        ),
+        threshold=0.01,
+    conda:
+        "envs/cobra.yaml"
+    threads: 1
+    resources:
+        mem_mb=1000,
+        runtime="5m",
+        partition="medium",
+    log:
+        f"{LOGS_DIR}/cross_strain/candidate_table.log",
+    shell:
+        """
+        mkdir -p $(dirname {output.table}) $(dirname {log})
+        python {input.script} {params.strains} {params.locus} \
+            --growth-threshold {params.threshold} \
+            --out {output.table} \
+            > {log} 2>&1
+        """
 
 # Final per-strain deliverable: pulls BUSCO, Bakta, both CarveMe models,
 # fba_media_test, fba_biolog_compare, operon_gene_check, AND the
