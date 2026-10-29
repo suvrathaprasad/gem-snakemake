@@ -212,11 +212,10 @@ Do these on the login node.
   model_samples: [SRR9972676, SRR9972681, SRR9972673]
   scan_samples:  [SRR9972676, SRR9972681, SRR9972673]
   ```
-- Strain maps: tab-separated files with a header line and then `SRR` and `LaborID` (the
-  strain name used in the Biolog table). `files/strain_id_map_pruns.tsv` covers the three
-  strains run together; there is also one map per colonization type,
-  `files/strain_id_map_per.tsv` (persistent), `files/strain_id_map_spo.tsv` (sporadic) and
-  `files/strain_id_map_unk.tsv` (unknown). Add a row for every strain you run.
+- Strain map: `strain_id_map` in `config.yaml` points to `files/strain_id_map_pruns.tsv`,
+  a tab-separated file with a header line and then `SRR` and `LaborID` (the strain name
+  used in the Biolog table), one row per strain. Add a row for every strain you run, and
+  list its SRR in the file named by `accessions_file`.
 - Slurm: set `partition=` in each rule's `resources:` block in the `Snakefile`, and the
   defaults in `workflow/profiles/slurm/config.yaml`. Add `--account=...` to the
   `sbatch` template there if your cluster needs one.

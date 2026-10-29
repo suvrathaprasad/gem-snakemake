@@ -13,8 +13,7 @@ better gene hit for any strain.
 Added uniformly to every strain's model based on genomic evidence
 (glcA -- annotated glycolate/glyoxylate transporter -- is present, at
 some identity, in every strain checked so far), NOT selectively to
-make any one strain's FBA prediction match its Biolog result. See
-build plan / chat log for the full reasoning.
+make any one strain's FBA prediction match its Biolog result.
 
 Adds:
   - glx_e (extracellular glyoxylate) -- same formula/charge as glx_c
